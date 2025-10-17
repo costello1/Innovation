@@ -1,0 +1,10 @@
+.rank-wrap{ max-width:760px; margin:0 auto }
+.rank-item{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; margin-bottom:10px; border-radius:12px;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);
+  background:#111; color:#fff;
+}
+.rank-pos{
+  width:28px; height:28px; border-radius:50%; background:#222; display:grid; place-items:center; font-weight:700
+}
