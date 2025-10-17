@@ -61,6 +61,7 @@
   outline:none;
   transition:border-color .2s, box-shadow .2s;
   font:400 var(--fs) ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial;
+  color:var(--text);
 }
 .input::placeholder { color:#9aa3b2; }
 .input:focus, .select:focus, textarea:focus {

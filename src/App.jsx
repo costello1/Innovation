@@ -9,20 +9,32 @@ import ThanksPage from './pages/ThanksPage'
 import { routes } from './utils/routes'
 
 export default function App() {
-  const { pathname, hash } = useLocation()
-  const routeKey = (hash || '').replace('#','') || pathname
-  const isQROnly = routeKey.startsWith('/qr')
+  // Con HashRouter il pathname funziona normalmente (niente parse dell'hash)
+  const { pathname } = useLocation()
+  const isQROnly = pathname.startsWith('/qr')
 
   return (
-    <div style={{minHeight:'100dvh'}}>
+    <div style={{ minHeight: '100dvh' }}>
       {!isQROnly && (
-        <header style={{
-          display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'12px 16px', borderBottom:'1px solid rgba(255,255,255,.08)', position:'sticky', top:0, backdropFilter:'blur(6px)', background:'rgba(11,11,15,.6)', zIndex:10
-        }}>
-          <Link to={routes.home} style={{color:'#fff', textDecoration:'none', fontWeight:800}}>LiveVote</Link>
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            borderBottom: '1px solid rgba(0,0,0,.08)',
+            position: 'sticky',
+            top: 0,
+            backdropFilter: 'blur(6px)',
+            background: '#ffffff',
+            zIndex: 10
+          }}
+        >
+          <Link to={routes.home} style={{ color: '#111', textDecoration: 'none', fontWeight: 800 }}>
+            LiveVote
+          </Link>
           <nav className="row">
-            <Link className="btn" to={routes.admin}>Pannello Admin</Link>
+            <Link className="btn" to={routes.admin}>Admin Panel</Link>
           </nav>
         </header>
       )}
