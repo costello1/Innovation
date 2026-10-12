@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db, nowTs, ensureVoter } from '../firebase'
 import {
-  collection, onSnapshot, doc, runTransaction, increment
+  collection, onSnapshot, doc, runTransaction, increment, getDocFromServer
 } from 'firebase/firestore'
 import s from '../styles/VotePage.module.css'
 
@@ -112,8 +112,13 @@ export default function VotePage() {
       }
       navigate('/thanks', { replace: true })
     } catch (err) {
-      const roundChanged = activeRound.current !== round
+      let roundChanged = activeRound.current !== round
         || err.message === 'The round has changed. Reload the survey to vote again.'
+      // Rules may reject a stale commit before the live listener delivers the reset.
+      if (!roundChanged && err.code === 'permission-denied') {
+        try { roundChanged = (await getDocFromServer(stateRef)).data()?.round !== round }
+        catch { /* Preserve the original failure when the server is unreachable. */ }
+      }
       alert(roundChanged ? 'The round has changed. Reload the survey to vote again.'
         : 'Unable to cast vote. Please try again.')
       console.error(err)
