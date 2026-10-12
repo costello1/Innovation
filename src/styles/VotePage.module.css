@@ -30,6 +30,8 @@
 .card {
   width:100%;
   display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  min-width:0;
   gap:var(--space-5);
   padding:clamp(20px, 4vw, 36px);
   border:1px solid var(--border);
@@ -47,7 +49,7 @@
 /* Lista opzioni */
 .optionsList {
   list-style:none; margin:0; padding:0;
-  display:grid; gap:12px; width:100%;
+  display:grid; gap:12px; width:100%; min-width:0;
 }
 
 .optionRow {
@@ -65,7 +67,7 @@
 .selected { border-color:var(--primary); background:linear-gradient(180deg, #ffffff 0%, #f7fbff 70%); }
 
 .radio { width:18px; height:18px; accent-color:var(--primary); flex:0 0 auto; }
-.optionLabel { font-weight:700; font-size:var(--fs); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.optionLabel { font-weight:700; font-size:var(--fs); color:var(--text); min-width:0; white-space:normal; overflow-wrap:anywhere; }
 
 .actions { display:flex; justify-content:center; gap:var(--space-3); }
 

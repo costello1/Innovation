@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore, serverTimestamp } from 'firebase/firestore'
+import { connectFirestoreEmulator, getFirestore, serverTimestamp } from 'firebase/firestore'
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -17,8 +17,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const emulatorHost = import.meta.env.DEV && import.meta.env.VITE_FIRESTORE_EMULATOR_HOST
+const app = initializeApp(emulatorHost
+  ? { ...firebaseConfig, projectId: 'demo-innovation' }
+  : firebaseConfig);
 const db = getFirestore(app)
+if (emulatorHost) {
+  const [host, port] = emulatorHost.split(':')
+  connectFirestoreEmulator(db, host, Number(port))
+}
 const nowTs = () => serverTimestamp()
 
 // 🔹 Named exports (quelli che importi altrove)

@@ -12,6 +12,8 @@ export default function VotePage() {
   const stateRef  = useMemo(()=> doc(db, 'meta', 'state'), [])
 
   const submitting = useRef(false)
+  const activeRound = useRef(null)
+  const [stateReady, setStateReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -26,10 +28,15 @@ export default function VotePage() {
       setError('Unable to load the survey. Please reload and try again.')
       setLoading(false)
     }
-    const unsubState = onSnapshot(stateRef, snap => {
+    const unsubState = onSnapshot(stateRef, { includeMetadataChanges: true }, snap => {
+      // A cached previous round must not redirect participants after an admin reset.
+      // Wait for the server to confirm the current round before enabling voting.
+      if (snap.metadata.fromCache || snap.metadata.hasPendingWrites) return
       const r = snap.data()?.round || 1
+      if (activeRound.current !== r) setSelectedId(null)
+      activeRound.current = r
       setRound(r)
-      setSelectedId(null)
+      setStateReady(true)
       try {
         if (localStorage.getItem('votedRound') === String(r)) {
           navigate('/thanks', { replace: true })
@@ -37,31 +44,53 @@ export default function VotePage() {
       } catch { /* Voting still works if browser storage is unavailable. */ }
     }, fail)
     const unsubTitles = onSnapshot(titoliCol, snap => {
-      setOptions(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a,b) => (a.titolo || '').localeCompare(b.titolo || '')))
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => (a.titolo || '').localeCompare(b.titolo || ''))
+      setOptions(list)
+      setSelectedId(selected => list.some(option => option.id === selected) ? selected : null)
       setLoading(false)
     }, fail)
-    return () => { unsubState(); unsubTitles() }
+    const checkOtherTab = (event) => {
+      if (event.key === 'votedRound' && event.newValue === String(activeRound.current)) {
+        navigate('/thanks', { replace: true })
+      }
+    }
+    window.addEventListener('storage', checkOtherTab)
+    return () => {
+      unsubState(); unsubTitles()
+      window.removeEventListener('storage', checkOtherTab)
+    }
   }, [navigate, stateRef, titoliCol])
 
   const confirmVote = async () => {
-    if (!selectedId || submitting.current || error) return
+    if (!selectedId || !stateReady || submitting.current || error) return
     submitting.current = true
     setSaving(true)
     try {
-      await runTransaction(db, async transaction => {
-        const state = await transaction.get(stateRef)
-        if ((state.data()?.round || 1) !== round) {
-          throw new Error('The round has changed. Reload the survey to vote again.')
-        }
-        transaction.update(doc(titoliCol, selectedId), {
-          voto: increment(1), updatedAt: nowTs()
+      const castVote = async () => {
+        // Recheck inside the browser-wide lock: another tab may have just voted.
+        try {
+          if (localStorage.getItem('votedRound') === String(round)) return
+        } catch { /* Browser storage may be unavailable. */ }
+        await runTransaction(db, async transaction => {
+          const state = await transaction.get(stateRef)
+          if ((state.data()?.round || 1) !== round) {
+            throw new Error('The round has changed. Reload the survey to vote again.')
+          }
+          transaction.update(doc(titoliCol, selectedId), {
+            voto: increment(1), updatedAt: nowTs()
+          })
         })
-      })
-      try {
-        localStorage.setItem('votedRound', String(round))
-        localStorage.setItem('votedAt', new Date().toISOString())
-      } catch { /* Do not report a successful vote as failed. */ }
+        try {
+          localStorage.setItem('votedRound', String(round))
+          localStorage.setItem('votedAt', new Date().toISOString())
+        } catch { /* Do not report a successful vote as failed. */ }
+      }
+      if (navigator.locks?.request) {
+        await navigator.locks.request('innovation-livevote', castVote)
+      } else {
+        await castVote()
+      }
       navigate('/thanks', { replace: true })
     } catch (err) {
       alert(err.message === 'The round has changed. Reload the survey to vote again.'
@@ -81,7 +110,7 @@ export default function VotePage() {
           <p className={s.subtitle}>One vote per round. Select an option, then press Confirm.</p>
         </header>
 
-        {error ? <div className={s.empty} role="alert">{error}</div> : loading ? (
+        {error ? <div className={s.empty} role="alert">{error}</div> : loading || !stateReady ? (
           <div className={s.empty}>Loading…</div>
         ) : options.length === 0 ? (
           <div className={s.empty}>No titles available yet.</div>

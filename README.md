@@ -34,3 +34,24 @@ non è autenticazione Firebase. Il blocco dei voti ripetuti usa la memoria del b
 ed è aggirabile cambiando browser o cancellandone i dati. La sfocatura non protegge
 la riservatezza dei titoli. Per usare il sito con dati riservati o con garanzie contro
 manomissioni servono Firebase Authentication e regole Firestore gestite sul progetto.
+
+## Test completi delle interazioni
+
+La suite Playwright usa il progetto **demo-innovation** nell'emulatore ufficiale
+Firestore, senza leggere o modificare il database online. Il collegamento
+all'emulatore è disponibile solo in sviluppo con `VITE_FIRESTORE_EMULATOR_HOST`.
+Le regole in `tests/firestore.rules` sono esclusivamente per i test locali.
+
+Con Java 21 e Node.js 22:
+
+```sh
+npm ci
+npx playwright install chromium
+npx --yes firebase-tools@15.33.0 emulators:exec --only firestore --project demo-innovation --config tests/firebase.json "npm run test:e2e"
+```
+
+La suite viene eseguita anche da `.github/workflows/test.yml` a ogni push/PR.
+Controlla navigazione, login, gestione titoli, più partecipanti, doppio clic,
+schede contemporanee, risultati live, sfocatura, QR, reset e nuovo voto,
+conflitti durante il reset, errori Firebase, rete e visualizzazione mobile.
+Screenshot e risultati JSON sono in `output/qa/` e negli artifact GitHub Actions.

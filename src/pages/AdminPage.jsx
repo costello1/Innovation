@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { db, nowTs } from '../firebase'
 import {
   collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc,
@@ -20,6 +20,7 @@ export default function AdminPage() {
 
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const working = useRef(false)
   const [round, setRound] = useState(1)
   const [blurTitles, setBlurTitles] = useState(false)
   const [titoli, setTitoli] = useState([]) // [{id,titolo,voto}]
@@ -38,8 +39,9 @@ export default function AdminPage() {
       console.error(err)
       setError('Database operation failed. Please reload and try again.')
     }
-    const unsub1 = onSnapshot(stateRef, snap => {
+    const unsub1 = onSnapshot(stateRef, { includeMetadataChanges: true }, snap => {
       if (!snap.exists()) {
+        if (snap.metadata.fromCache || snap.metadata.hasPendingWrites) return
         setDoc(stateRef, { round: 1, blurTitles: true, updatedAt: nowTs() }).catch(fail)
         return
       }
@@ -54,13 +56,16 @@ export default function AdminPage() {
   }, [isAuthed, stateRef, titoliCol])
 
   const perform = async (action) => {
+    if (working.current) return false
+    working.current = true
     setBusy(true)
     setError('')
-    try { await action() }
+    try { await action(); return true }
     catch (err) {
       console.error(err)
       setError('Database operation failed. Please try again.')
-    } finally { setBusy(false) }
+      return false
+    } finally { working.current = false; setBusy(false) }
   }
 
   const addTitolo = async () => {
@@ -156,12 +161,13 @@ export default function AdminPage() {
 }
 
 function TitoloRow({ titoloItem, onSave, onDelete }) {
-  const [label, setLabel] = useState(titoloItem.titolo || '')
+  const [draft, setDraft] = useState(null)
+  const label = draft ?? titoloItem.titolo ?? ''
   const dirty = label.trim() !== (titoloItem.titolo || '')
   return (
-    <div className={s.projectRow}>
-      <input className={s.input} value={label} onChange={e=>setLabel(e.target.value)} />
-      <button className={s.btn} disabled={!dirty || !label.trim()} onClick={()=>onSave(titoloItem.id, label)}>Save</button>
+    <div className={s.projectRow} data-testid={`title-${titoloItem.id}`}>
+      <input className={s.input} value={label} onChange={e=>setDraft(e.target.value)} />
+      <button className={s.btn} disabled={!dirty || !label.trim()} onClick={async () => { if (await onSave(titoloItem.id, label)) setDraft(null) }}>Save</button>
       <button className={`${s.btn} ${s.danger}`} onClick={()=>onDelete(titoloItem.id)}>Delete</button>
     </div>
   )

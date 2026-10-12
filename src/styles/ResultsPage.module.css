@@ -65,7 +65,7 @@
 .rankItem {
   width:100%;
   display:grid;
-  grid-template-columns:1fr auto;
+  grid-template-columns:minmax(0, 1fr) auto;
   grid-template-rows:auto auto;
   gap:8px 12px;
   padding:14px 16px;
@@ -109,3 +109,6 @@
 @media (max-width:560px){
   .panel { padding:16px; }
 }
+
+.label > span:nth-child(2) { min-width:0; overflow-wrap:anywhere; }
+.pos, .crown { flex-shrink:0; }

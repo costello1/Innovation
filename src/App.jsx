@@ -1,5 +1,5 @@
 import React from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import VotePage from './pages/VotePage'
 import ResultsPage from './pages/ResultsPage'
@@ -47,6 +47,7 @@ export default function App() {
           <Route path="/qr/:surveyId" element={<QROnlyPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/thanks" element={<ThanksPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
