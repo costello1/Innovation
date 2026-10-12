@@ -1,18 +1,18 @@
-import React from 'react'
+import { QRCodeSVG } from 'qrcode.react'
+import { useParams } from 'react-router-dom'
+import { routes } from '../utils/routes'
 import s from '../styles/QROnlyPage.module.css'
 
 export default function QRPage() {
-  const qrSrc = `${import.meta.env.BASE_URL}qr-placeholder.png`
+  const { surveyId } = useParams()
+  const voteUrl = new URL(window.location.href)
+  voteUrl.hash = routes.vote(surveyId)
   return (
     <div className={s.wrap}>
       <div className={s.card}>
-        <h2 style={{marginTop:0, fontWeight:800, textAlign:'center'}}>Scan to Vote</h2>
-        {/* Placeholder image — replace with your QR later */}
-        <img
-          className={s.image}
-          src={qrSrc}
-          alt="QR Code placeholder"
-        />
+        <h2 className={s.title}>Scan to Vote</h2>
+        <QRCodeSVG className={s.image} value={voteUrl.href} size={720} marginSize={4} level="M" title="Scan to open the voting page" />
+        <a href={voteUrl.href}>Open voting page</a>
       </div>
     </div>
   )

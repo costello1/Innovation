@@ -1,16 +1,36 @@
-# React + Vite
+# Innovation — LiveVote
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Sondaggio in tempo reale: https://costello1.github.io/Innovation/
 
-Currently, two official plugins are available:
+- Amministrazione: `#/admin`
+- Votazione: `#/vote/any`
+- Risultati in diretta: `#/results/any`
+- QR da proiettare: `#/qr/any` (generato automaticamente per il sito corrente)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Nuova sessione
 
-## React Compiler
+Accedi al pannello con le credenziali già configurate, aggiungi/modifica i titoli e usa
+**Reset votes + Allow revote** per azzerare i voti e aprire un nuovo round.
+Il reset richiede conferma e aggiorna voti e round nella stessa operazione.
+Mostra il QR ai partecipanti e apri i risultati su un altro schermo.
+Il pulsante per nascondere i titoli applica una sfocatura ai risultati.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Tutti i link `any`/`default` usano lo stesso sondaggio e le collezioni Firebase
+`TITOLI` e `meta/state`: non sono sondaggi indipendenti.
+I risultati precedenti non vengono cancellati dal deploy.
 
-## Expanding the ESLint configuration
+## Sviluppo e pubblicazione
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Node.js 22. Esegui `npm ci`, poi `npm run dev`.
+Verifica con `npm run lint` e `npm run build`.
+Ogni push su `main` pubblica il sito tramite `.github/workflows/deploy.yml`.
+GitHub Pages deve usare GitHub Actions come sorgente.
+Il router usa URL con `#`, compatibili con GitHub Pages e con il refresh.
+
+## Limiti del sistema esistente
+
+Il login admin è un controllo nel browser con credenziali presenti nel sorgente pubblico;
+non è autenticazione Firebase. Il blocco dei voti ripetuti usa la memoria del browser
+ed è aggirabile cambiando browser o cancellandone i dati. La sfocatura non protegge
+la riservatezza dei titoli. Per usare il sito con dati riservati o con garanzie contro
+manomissioni servono Firebase Authentication e regole Firestore gestite sul progetto.

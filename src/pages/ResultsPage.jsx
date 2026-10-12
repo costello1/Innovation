@@ -1,30 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { db } from '../firebase'
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore'
+import { collection, onSnapshot, doc } from 'firebase/firestore'
 import s from '../styles/ResultsPage.module.css'
 
 export default function ResultsPage() {
   const titoliCol = useMemo(()=> collection(db, 'TITOLI'), [])
   const stateRef  = useMemo(()=> doc(db, 'meta', 'state'), [])
 
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const [titles, setTitles] = useState([])     // [{id,titolo,voto}]
   const [blurTitles, setBlurTitles] = useState(true)
 
   useEffect(() => {
-    let unsub1 = () => {}, unsub2 = () => {}
-    ;(async () => {
-      const sSnap = await getDoc(stateRef)
-      if (sSnap.exists()) setBlurTitles(!!sSnap.data().blurTitles)
-      unsub1 = onSnapshot(stateRef, snap => {
-        const d = snap.data() || {}
-        setBlurTitles(d.blurTitles ?? true)
-      })
-      unsub2 = onSnapshot(titoliCol, snap => {
-        const list = snap.docs.map(d => ({ id:d.id, ...(d.data()) }))
-          .sort((a,b) => (b.voto||0) - (a.voto||0) || (a.titolo||'').localeCompare(b.titolo||''))
-        setTitles(list)
-      })
-    })()
+    const fail = (err) => {
+      console.error(err)
+      setError('Unable to load live results. Please reload and try again.')
+      setLoading(false)
+    }
+    const unsub1 = onSnapshot(stateRef, snap => {
+      setBlurTitles(snap.data()?.blurTitles ?? true)
+    }, fail)
+    const unsub2 = onSnapshot(titoliCol, snap => {
+      setTitles(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => (b.voto || 0) - (a.voto || 0) || (a.titolo || '').localeCompare(b.titolo || '')))
+      setLoading(false)
+    }, fail)
     return () => { unsub1(); unsub2() }
   }, [stateRef, titoliCol])
 
@@ -43,6 +44,8 @@ export default function ResultsPage() {
 
       <section className={s.panel}>
         <div className={s.rankList}>
+          {error && <p role="alert">{error}</p>}
+          {loading && <p>Loading…</p>}
           {titles.map((t, idx) => {
             const votes = t.voto || 0
             const pct = max ? Math.round((votes / max) * 100) : 0
@@ -63,7 +66,7 @@ export default function ResultsPage() {
               </div>
             )
           })}
-          {titles.length === 0 && (
+          {!loading && !error && titles.length === 0 && (
             <div style={{opacity:.6}}>No titles yet.</div>
           )}
         </div>

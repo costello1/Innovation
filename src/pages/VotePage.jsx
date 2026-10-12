@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { db, nowTs } from '../firebase'
 import {
-  collection, onSnapshot, doc, getDoc, updateDoc, increment
+  collection, onSnapshot, doc, runTransaction, increment
 } from 'firebase/firestore'
 import s from '../styles/VotePage.module.css'
 
@@ -11,6 +11,9 @@ export default function VotePage() {
   const titoliCol = useMemo(()=> collection(db, 'TITOLI'), [])
   const stateRef  = useMemo(()=> doc(db, 'meta', 'state'), [])
 
+  const submitting = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [round, setRound] = useState(1)
   const [options, setOptions] = useState([])
@@ -18,48 +21,55 @@ export default function VotePage() {
 
   // Load round + redirect if already voted this round
   useEffect(() => {
-    let unsubState = () => {}, unsubTitles = () => {}
-    ;(async () => {
-      const sSnap = await getDoc(stateRef)
-      let r = 1
-      if (sSnap.exists()) r = sSnap.data().round || 1
+    const fail = (err) => {
+      console.error(err)
+      setError('Unable to load the survey. Please reload and try again.')
+      setLoading(false)
+    }
+    const unsubState = onSnapshot(stateRef, snap => {
+      const r = snap.data()?.round || 1
       setRound(r)
-
-      const votedRound = localStorage.getItem('votedRound')
-      if (String(votedRound) === String(r)) {
-        navigate('/thanks', { replace:true })
-        return
-      }
-
-      unsubState = onSnapshot(stateRef, snap => {
-        const d = snap.data() || {}
-        const newRound = d.round || 1
-        setRound(newRound)
-      })
-
-      unsubTitles = onSnapshot(titoliCol, snap => {
-        const list = snap.docs.map(d => ({ id:d.id, ...(d.data()) }))
-          .sort((a,b)=> (a.titolo||'').localeCompare(b.titolo||''))
-        setOptions(list)
-        setLoading(false)
-      })
-    })()
+      setSelectedId(null)
+      try {
+        if (localStorage.getItem('votedRound') === String(r)) {
+          navigate('/thanks', { replace: true })
+        }
+      } catch { /* Voting still works if browser storage is unavailable. */ }
+    }, fail)
+    const unsubTitles = onSnapshot(titoliCol, snap => {
+      setOptions(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => (a.titolo || '').localeCompare(b.titolo || '')))
+      setLoading(false)
+    }, fail)
     return () => { unsubState(); unsubTitles() }
   }, [navigate, stateRef, titoliCol])
 
   const confirmVote = async () => {
-    if (!selectedId) return
+    if (!selectedId || submitting.current || error) return
+    submitting.current = true
+    setSaving(true)
     try {
-      await updateDoc(doc(titoliCol, selectedId), {
-        voto: increment(1),
-        updatedAt: nowTs()
+      await runTransaction(db, async transaction => {
+        const state = await transaction.get(stateRef)
+        if ((state.data()?.round || 1) !== round) {
+          throw new Error('The round has changed. Reload the survey to vote again.')
+        }
+        transaction.update(doc(titoliCol, selectedId), {
+          voto: increment(1), updatedAt: nowTs()
+        })
       })
-      localStorage.setItem('votedRound', String(round))
-      localStorage.setItem('votedAt', new Date().toISOString())
-      navigate('/thanks', { replace:true })
-    } catch (e) {
-      alert('Unable to cast vote. Please try again.')
-      console.error(e)
+      try {
+        localStorage.setItem('votedRound', String(round))
+        localStorage.setItem('votedAt', new Date().toISOString())
+      } catch { /* Do not report a successful vote as failed. */ }
+      navigate('/thanks', { replace: true })
+    } catch (err) {
+      alert(err.message === 'The round has changed. Reload the survey to vote again.'
+        ? err.message : 'Unable to cast vote. Please try again.')
+      console.error(err)
+    } finally {
+      submitting.current = false
+      setSaving(false)
     }
   }
 
@@ -71,7 +81,7 @@ export default function VotePage() {
           <p className={s.subtitle}>One vote per round. Select an option, then press Confirm.</p>
         </header>
 
-        {loading ? (
+        {error ? <div className={s.empty} role="alert">{error}</div> : loading ? (
           <div className={s.empty}>Loading…</div>
         ) : options.length === 0 ? (
           <div className={s.empty}>No titles available yet.</div>
@@ -101,11 +111,11 @@ export default function VotePage() {
             <div className={s.actions}>
               <button
                 className={`${s.btn} ${s.primary}`}
-                disabled={!selectedId}
+                disabled={!selectedId || saving}
                 onClick={confirmVote}
-                aria-disabled={!selectedId}
+                aria-disabled={!selectedId || saving}
               >
-                Confirm
+                {saving ? 'Sending…' : 'Confirm'}
               </button>
             </div>
           </>

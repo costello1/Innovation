@@ -1,5 +1,5 @@
 import React from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 import './RankList.css'
 
 export default function RankList({ items }) {
@@ -7,7 +7,7 @@ export default function RankList({ items }) {
     <div className="rank-wrap">
       <AnimatePresence>
         {items.map((it, i) => (
-          <motion.div
+          <Motion.div
             key={it.id}
             layout
             initial={{opacity:0, y:10}}
@@ -23,7 +23,7 @@ export default function RankList({ items }) {
             <div style={{fontVariantNumeric:'tabular-nums', fontWeight:700}}>
               {it.count}
             </div>
-          </motion.div>
+          </Motion.div>
         ))}
       </AnimatePresence>
     </div>

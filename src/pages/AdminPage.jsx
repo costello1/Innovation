@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { db, nowTs } from '../firebase'
 import {
   collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc,
-  getDoc, setDoc, getDocs, writeBatch, increment
+  setDoc, getDocs, writeBatch, increment
 } from 'firebase/firestore'
 import { Link } from 'react-router-dom'
 import { routes } from '../utils/routes'
@@ -18,6 +18,8 @@ export default function AdminPage() {
   const titoliCol = useMemo(()=> collection(db, 'TITOLI'), [])
   const stateRef = useMemo(()=> doc(db, 'meta', 'state'), [])
 
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const [round, setRound] = useState(1)
   const [blurTitles, setBlurTitles] = useState(false)
   const [titoli, setTitoli] = useState([]) // [{id,titolo,voto}]
@@ -32,25 +34,34 @@ export default function AdminPage() {
   // Init state + subscribe
   useEffect(()=>{
     if (!isAuthed) return
-    let unsub1 = () => {}, unsub2 = () => {}
-    ;(async ()=>{
-      const s = await getDoc(stateRef)
-      if (!s.exists()) {
-        await setDoc(stateRef, { round: 1, blurTitles: true, updatedAt: nowTs() })
+    const fail = (err) => {
+      console.error(err)
+      setError('Database operation failed. Please reload and try again.')
+    }
+    const unsub1 = onSnapshot(stateRef, snap => {
+      if (!snap.exists()) {
+        setDoc(stateRef, { round: 1, blurTitles: true, updatedAt: nowTs() }).catch(fail)
+        return
       }
-      unsub1 = onSnapshot(stateRef, snap => {
-        const d = snap.data() || {}
-        setRound(d.round || 1)
-        setBlurTitles(!!d.blurTitles)
-      })
-      unsub2 = onSnapshot(titoliCol, snap => {
-        const list = snap.docs.map(d => ({ id:d.id, ...(d.data()) }))
-          .sort((a,b)=> (a.titolo||'').localeCompare(b.titolo||''))
-        setTitoli(list)
-      })
-    })()
-    return ()=>{ unsub1(); unsub2() }
+      setRound(snap.data().round || 1)
+      setBlurTitles(!!snap.data().blurTitles)
+    }, fail)
+    const unsub2 = onSnapshot(titoliCol, snap => {
+      setTitoli(snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a,b) => (a.titolo || '').localeCompare(b.titolo || '')))
+    }, fail)
+    return () => { unsub1(); unsub2() }
   }, [isAuthed, stateRef, titoliCol])
+
+  const perform = async (action) => {
+    setBusy(true)
+    setError('')
+    try { await action() }
+    catch (err) {
+      console.error(err)
+      setError('Database operation failed. Please try again.')
+    } finally { setBusy(false) }
+  }
 
   const addTitolo = async () => {
     const label = newTitolo.trim()
@@ -78,8 +89,8 @@ export default function AdminPage() {
     snap.forEach(d => {
       b.update(d.ref, { voto: 0, updatedAt: nowTs() })
     })
+    b.update(stateRef, { round: increment(1), updatedAt: nowTs() })
     await b.commit()
-    await updateDoc(stateRef, { round: increment(1), updatedAt: nowTs() })
     alert('Reset complete: votes cleared and everyone can vote again.')
   }
 
@@ -113,21 +124,22 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <section className={s.panel}>
+      {error && <p role="alert">{error}</p>}
+      <fieldset className={s.panel} disabled={busy} style={{minWidth:0}}>
         <h3 style={{marginTop:0}}>Manage Titles (<code>TITOLI</code>)</h3>
 
         <div className={s.row} style={{marginBottom:12}}>
           <input className={s.input} placeholder="New title (e.g. Apollo)" value={newTitolo} onChange={e=>setNewTitolo(e.target.value)} />
-          <button className={`${s.btn} ${s.accent}`} onClick={addTitolo}>Add</button>
-          <button className={`${s.btn} ${s.danger}`} onClick={resetVotiAndAllowRevote}>Reset votes + Allow revote</button>
-          <button className={s.btn} onClick={toggleBlur}>
+          <button className={`${s.btn} ${s.accent}`} onClick={() => perform(addTitolo)}>Add</button>
+          <button className={`${s.btn} ${s.danger}`} onClick={() => { if (confirm('Clear all votes and start a new round?')) perform(resetVotiAndAllowRevote) }}>Reset votes + Allow revote</button>
+          <button className={s.btn} onClick={() => perform(toggleBlur)}>
             {blurTitles ? 'Show titles (remove blur)' : 'Hide titles (blur)'}
           </button>
         </div>
 
         <div className={s.projects}>
           {titoli.map(t => (
-            <TitoloRow key={t.id} titoloItem={t} onSave={saveTitolo} onDelete={removeTitolo} />
+            <TitoloRow key={t.id} titoloItem={t} onSave={(id, label) => perform(() => saveTitolo(id, label))} onDelete={id => perform(() => removeTitolo(id))} />
           ))}
           {titoli.length === 0 && <div className={s.badge}>No titles yet.</div>}
         </div>
@@ -138,7 +150,7 @@ export default function AdminPage() {
           <Link className={s.btn} to={routes.results('any')}>Results Page</Link>
           <Link className={s.btn} to={routes.qr('any')}>QR-only Page</Link>
         </div>
-      </section>
+      </fieldset>
     </div>
   )
 }
@@ -149,7 +161,7 @@ function TitoloRow({ titoloItem, onSave, onDelete }) {
   return (
     <div className={s.projectRow}>
       <input className={s.input} value={label} onChange={e=>setLabel(e.target.value)} />
-      <button className={s.btn} disabled={!dirty} onClick={()=>onSave(titoloItem.id, label)}>Save</button>
+      <button className={s.btn} disabled={!dirty || !label.trim()} onClick={()=>onSave(titoloItem.id, label)}>Save</button>
       <button className={`${s.btn} ${s.danger}`} onClick={()=>onDelete(titoloItem.id)}>Delete</button>
     </div>
   )
