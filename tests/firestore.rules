@@ -1,7 +1,0 @@
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Local demo emulator only. Never deploy these rules to a real project.
-    match /{document=**} { allow read, write: if true; }
-  }
-}

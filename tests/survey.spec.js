@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 
 const root = 'http://127.0.0.1:8180'
@@ -8,7 +9,7 @@ const seedTitles = [
 ]
 const fields = obj => Object.fromEntries(Object.entries(obj).map(([k,v]) => [k, typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: v }]))
 async function setDoc(path, data) {
-  const res = await fetch(`${documents}/${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({fields:fields(data)}) })
+  const res = await fetch(`${documents}/${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' }, body: JSON.stringify({fields:fields(data)}) })
   expect(res.ok).toBeTruthy()
 }
 async function readDoc(path) {
@@ -17,13 +18,31 @@ async function readDoc(path) {
 }
 async function seed(titles = seedTitles) {
   await fetch(`${root}/emulator/v1/projects/${project}/databases/(default)/documents`, {method:'DELETE'})
+  await seedAdmin()
   await setDoc('meta/state', {round:17, blurTitles:false})
   for(const [id,titolo] of titles) await setDoc(`TITOLI/${id}`, {titolo,voto:0})
 }
+async function seedAdmin() {
+  const res = await fetch('http://127.0.0.1:9199/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:'qa-admin@example.test',password:'emulator-password-only',returnSecureToken:true})
+  })
+  let account = await res.json()
+  if (!account.localId) {
+    account = await (await fetch('http://127.0.0.1:9199/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake', {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email:'qa-admin@example.test',password:'emulator-password-only',returnSecureToken:true})
+    })).json()
+  }
+  expect(account.localId).toBeTruthy()
+  await setDoc(`admins/${account.localId}`, {enabled:true})
+}
 async function login(page) {
   await page.goto('#/admin')
-  await page.getByPlaceholder('username').fill('admin')
-  await page.getByPlaceholder('password',{exact:true}).fill('T&I-admin')
+  await expect(page.getByRole('button',{name:/^Sign (in|out)$/})).toBeVisible()
+  if (await page.getByRole('button',{name:'Sign out',exact:true}).isVisible()) return
+  await page.getByPlaceholder('email').fill('qa-admin@example.test')
+  await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect(page.getByText('Round: 17',{exact:true})).toBeVisible()
 }
@@ -39,11 +58,11 @@ async function total(page,n) {
 }
 
 async function rules(allow) {
-  const content = `rules_version = '2'; service cloud.firestore { match /databases/{database}/documents { match /{document=**} { ${allow} } } }`
+  const content = allow === 'production' ? readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') : `rules_version = '2'; service cloud.firestore { match /databases/{database}/documents { match /{document=**} { ${allow} } } }`
   const res = await fetch(`${root}/emulator/v1/projects/${project}:securityRules`, {method:'PUT', headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:{files:[{name:'security.rules',content}]}})})
   expect(res.ok).toBeTruthy()
 }
-test.beforeEach(async () => { await rules('allow read, write: if true;'); await seed() })
+test.beforeEach(async () => { await rules('production'); await seed() })
 test.afterEach(async ({ page }, info) => {
   if(info.status!==info.expectedStatus) console.log('Failure URL:',page.url())
 })
@@ -67,11 +86,10 @@ test('unknown URL returns a usable home page', async ({page}) => {
 
 test('wrong credentials remain outside admin', async ({page}) => {
   await page.goto('#/admin')
-  await page.getByPlaceholder('username').fill('wrong')
+  await page.getByPlaceholder('email').fill('wrong@example.test')
   await page.getByPlaceholder('password',{exact:true}).fill('wrong')
-  const dialog=page.waitForEvent('dialog');
-  const clicking=page.getByRole('button',{name:'Sign in',exact:true}).click()
-  const d=await dialog; expect(d.message()).toBe('Wrong credentials'); await d.accept(); await clicking
+  await page.getByRole('button',{name:'Sign in',exact:true}).click()
+  await expect(page.getByRole('alert')).toContainText('Unable to sign in.')
   await expect(page.getByRole('heading',{name:'Admin Login'})).toBeVisible()
   await expect(page.getByRole('button',{name:'Add',exact:true})).toHaveCount(0)
 })
@@ -90,7 +108,7 @@ test('admin CRUD, trimming and blank validation', async ({page}) => {
   await expect(r.getByRole('button',{name:'Save',exact:true})).toBeDisabled()
   await r.locator('input').fill('  Progetto aggiornato  ')
   await r.getByRole('button',{name:'Save',exact:true}).click()
-  await page.reload(); await page.getByPlaceholder('username').fill('admin'); await page.getByPlaceholder('password',{exact:true}).fill('T&I-admin'); await page.getByRole('button',{name:'Sign in',exact:true}).click()
+  await page.reload()
   await expect(row(page,'Progetto aggiornato')).toBeVisible()
   await row(page,'Progetto aggiornato').getByRole('button',{name:'Delete',exact:true}).click()
   await expect(page.getByRole('button',{name:'Delete',exact:true})).toHaveCount(3)
@@ -272,7 +290,7 @@ test('admin write denial shows error and controls recover', async ({page}) => {
   await expect(page.getByRole('alert')).toHaveText('Database operation failed. Please try again.')
   await expect(page.getByRole('button',{name:'Add',exact:true})).toBeEnabled()
   await expect(page.getByRole('button',{name:'Delete',exact:true})).toHaveCount(3)
-  await rules('allow read, write: if true;')
+  await rules('production')
   await page.getByRole('button',{name:'Add',exact:true}).click()
   await expect(row(page,'Rejected write')).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
@@ -285,7 +303,7 @@ test('rejected vote stays on survey and can be retried', async ({page}) => {
   const d=await dialog; expect(d.message()).toContain('Unable to cast vote'); await d.accept(); await clicking
   await expect(page.getByRole('button',{name:'Confirm',exact:true})).toBeEnabled()
   expect(await page.evaluate(()=>localStorage.getItem('votedRound'))).toBeNull()
-  await rules('allow read, write: if true;')
+  await rules('production')
   await page.getByRole('button',{name:'Confirm',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Thank you for your vote! 🎉'})).toBeVisible()
 })
@@ -355,7 +373,7 @@ test('failed reset is atomic and can be retried', async ({page}) => {
   await expect(page.getByRole('alert')).toHaveText('Database operation failed. Please try again.')
   expect((await readDoc('TITOLI/apollo')).voto.integerValue).toBe('5')
   expect((await readDoc('meta/state')).round.integerValue).toBe('17')
-  await rules('allow read, write: if true;')
+  await rules('production')
   await page.getByRole('button',{name:'Reset votes + Allow revote',exact:true}).click()
   await expect.poll(async()=>(await readDoc('meta/state')).round.integerValue).toBe('18')
   expect((await readDoc('TITOLI/apollo')).voto.integerValue).toBe('0')
@@ -364,11 +382,43 @@ test('failed reset is atomic and can be retried', async ({page}) => {
 
 test('first admin initializes missing round state and resets an empty survey', async ({page}) => {
   await fetch(`${root}/emulator/v1/projects/${project}/databases/(default)/documents`,{method:'DELETE'})
+  await seedAdmin()
   await page.goto('#/admin')
-  await page.getByPlaceholder('username').fill('admin'); await page.getByPlaceholder('password',{exact:true}).fill('T&I-admin')
+  await page.getByPlaceholder('email').fill('qa-admin@example.test'); await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect.poll(async()=>(await readDoc('meta/state'))?.round?.integerValue).toBe('1')
   await expect(page.getByText('No titles yet.')).toBeVisible()
   page.on('dialog',d=>d.accept()); await page.getByRole('button',{name:'Reset votes + Allow revote',exact:true}).click()
   await expect.poll(async()=>(await readDoc('meta/state')).round.integerValue).toBe('2')
+})
+
+
+test('server receipt prevents another vote after clearing the local vote flag', async ({page}) => {
+  await vote(page)
+  await page.evaluate(() => { localStorage.removeItem('votedRound'); localStorage.removeItem('votedAt') })
+  await page.goto('#/vote/any')
+  await expect(page.getByRole('heading',{name:'Thank you for your vote! 🎉'})).toBeVisible()
+  expect((await readDoc('TITOLI/apollo')).voto.integerValue).toBe('1')
+})
+
+test('admin session survives reload and sign out closes the panel', async ({page}) => {
+  await login(page)
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Admin Panel',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Sign out',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'Admin Login',exact:true})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Add',exact:true})).toHaveCount(0)
+})
+
+test('valid Firebase credentials without admin role cannot access management', async ({page}) => {
+  await fetch('http://127.0.0.1:9199/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake', {
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:'participant@example.test',password:'emulator-password-only',returnSecureToken:true})
+  })
+  await page.goto('#/admin')
+  await page.getByPlaceholder('email').fill('participant@example.test')
+  await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
+  await page.getByRole('button',{name:'Sign in',exact:true}).click()
+  await expect(page.getByRole('alert')).toHaveText('This account is not an administrator.')
+  await expect(page.getByRole('button',{name:'Add',exact:true})).toHaveCount(0)
 })

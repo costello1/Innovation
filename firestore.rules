@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function admin() {
+      return request.auth != null && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function validTitle(data) {
+      return data.keys().hasOnly(['titolo', 'voto', 'createdAt', 'updatedAt'])
+        && data.titolo is string && data.titolo.size() > 0 && data.titolo.size() <= 2000
+        && data.voto is int && data.voto >= 0 && data.updatedAt == request.time;
+    }
+    function validVote(titleId) {
+      let round = get(/databases/$(database)/documents/meta/state).data.round;
+      let receipt = /databases/$(database)/documents/votes/$(request.auth.uid)/rounds/$(string(round));
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voto', 'updatedAt'])
+        && request.resource.data.voto == resource.data.voto + 1
+        && request.resource.data.voto is int
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/meta/state).data.round == round
+        && !exists(receipt)
+        && getAfter(receipt).data.titleId == titleId
+        && getAfter(receipt).data.round == round;
+    }
+    match /admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+    }
+    match /TITOLI/{titleId} {
+      allow read: if true;
+      allow create: if admin() && validTitle(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow delete: if admin();
+      allow update: if (admin() && validTitle(request.resource.data))
+        || (request.auth != null && validVote(titleId));
+    }
+    match /meta/state {
+      allow read: if true;
+      allow create, update: if admin()
+        && request.resource.data.keys().hasOnly(['round', 'blurTitles', 'updatedAt'])
+        && request.resource.data.round is int && request.resource.data.round >= 1
+        && request.resource.data.blurTitles is bool && request.resource.data.updatedAt == request.time;
+    }
+    match /votes/{uid}/rounds/{roundId} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['titleId', 'round', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['titleId', 'round', 'createdAt'])
+        && request.resource.data.titleId is string
+        && request.resource.data.titleId.matches('[a-zA-Z0-9_-]{1,128}')
+        && request.resource.data.round is int
+        && roundId == string(request.resource.data.round)
+        && request.resource.data.round == get(/databases/$(database)/documents/meta/state).data.round
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/TITOLI/$(request.resource.data.titleId)).data.voto
+          == get(/databases/$(database)/documents/TITOLI/$(request.resource.data.titleId)).data.voto + 1;
+    }
+  }
+}

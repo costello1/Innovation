@@ -1,6 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, getFirestore, serverTimestamp } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator, signInAnonymously } from 'firebase/auth'
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -22,14 +23,27 @@ const app = initializeApp(emulatorHost
   ? { ...firebaseConfig, projectId: 'demo-innovation' }
   : firebaseConfig);
 const db = getFirestore(app)
+const auth = getAuth(app)
 if (emulatorHost) {
   const [host, port] = emulatorHost.split(':')
   connectFirestoreEmulator(db, host, Number(port))
+  connectAuthEmulator(auth, `http://${host}:9199`, { disableWarnings: true })
 }
 const nowTs = () => serverTimestamp()
 
+let anonymousLogin
+async function ensureVoter() {
+  await auth.authStateReady()
+  if (auth.currentUser) return auth.currentUser
+  if (!anonymousLogin) {
+    anonymousLogin = signInAnonymously(auth).then(result => result.user)
+      .finally(() => { anonymousLogin = null })
+  }
+  return anonymousLogin
+}
+
 // 🔹 Named exports (quelli che importi altrove)
-export { app, db, nowTs }
+export { app, db, auth, nowTs, ensureVoter }
 
 // 🔹 (opzionale) default per usi futuri
 export default app

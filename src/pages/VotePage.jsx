@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { db, nowTs } from '../firebase'
+import { db, nowTs, ensureVoter } from '../firebase'
 import {
   collection, onSnapshot, doc, runTransaction, increment
 } from 'firebase/firestore'
@@ -13,6 +13,7 @@ export default function VotePage() {
 
   const submitting = useRef(false)
   const activeRound = useRef(null)
+  const [voter, setVoter] = useState(null)
   const [stateReady, setStateReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -20,6 +21,20 @@ export default function VotePage() {
   const [round, setRound] = useState(1)
   const [options, setOptions] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    ensureVoter().then(account => { if (active) setVoter(account) })
+      .catch(() => { if (active) setError('Unable to connect securely. Please reload and try again.') })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    if (!voter || !stateReady) return
+    return onSnapshot(doc(db, 'votes', voter.uid, 'rounds', String(round)), snap => {
+      if (snap.exists() && !snap.metadata.hasPendingWrites) navigate('/thanks', { replace: true })
+    }, () => setError('Unable to verify your vote. Please reload and try again.'))
+  }, [voter, stateReady, round, navigate])
 
   // Load round + redirect if already voted this round
   useEffect(() => {
@@ -63,7 +78,7 @@ export default function VotePage() {
   }, [navigate, stateRef, titoliCol])
 
   const confirmVote = async () => {
-    if (!selectedId || !stateReady || submitting.current || error) return
+    if (!selectedId || !stateReady || !voter || submitting.current || error) return
     submitting.current = true
     setSaving(true)
     try {
@@ -77,6 +92,10 @@ export default function VotePage() {
           if ((state.data()?.round || 1) !== round) {
             throw new Error('The round has changed. Reload the survey to vote again.')
           }
+          const receiptRef = doc(db, 'votes', voter.uid, 'rounds', String(round))
+          const receipt = await transaction.get(receiptRef)
+          if (receipt.exists()) return
+          transaction.set(receiptRef, { titleId: selectedId, round, createdAt: nowTs() })
           transaction.update(doc(titoliCol, selectedId), {
             voto: increment(1), updatedAt: nowTs()
           })
@@ -93,8 +112,10 @@ export default function VotePage() {
       }
       navigate('/thanks', { replace: true })
     } catch (err) {
-      alert(err.message === 'The round has changed. Reload the survey to vote again.'
-        ? err.message : 'Unable to cast vote. Please try again.')
+      const roundChanged = activeRound.current !== round
+        || err.message === 'The round has changed. Reload the survey to vote again.'
+      alert(roundChanged ? 'The round has changed. Reload the survey to vote again.'
+        : 'Unable to cast vote. Please try again.')
       console.error(err)
     } finally {
       submitting.current = false
@@ -110,7 +131,7 @@ export default function VotePage() {
           <p className={s.subtitle}>One vote per round. Select an option, then press Confirm.</p>
         </header>
 
-        {error ? <div className={s.empty} role="alert">{error}</div> : loading || !stateReady ? (
+        {error ? <div className={s.empty} role="alert">{error}</div> : loading || !stateReady || !voter ? (
           <div className={s.empty}>Loading…</div>
         ) : options.length === 0 ? (
           <div className={s.empty}>No titles available yet.</div>
