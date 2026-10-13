@@ -33,7 +33,10 @@ Questa versione richiede Firebase Authentication e le regole in `firestore.rules
 Prima di pubblicarla su Pages:
 
 1. Accedi al progetto Firebase **innovation-f1ffa** con un account autorizzato.
-2. Abilita i provider Authentication **Email/Password** e **Anonymous**.
+2. Abilita i provider Authentication **Email/Password** e **Anonymous** con
+   `npx firebase-tools@15.33.0 deploy --only auth --project innovation-f1ffa`.
+   I provider sono dichiarati in `firebase.json`; si usa Firebase Authentication
+   standard, senza richiedere l’attivazione della fatturazione.
 3. Crea l'utente amministratore in Authentication, con una password personale.
    Copia il suo UID e crea tramite console il documento `admins/UID` con
    il campo `enabled: true`. La presenza del documento attribuisce il ruolo;
