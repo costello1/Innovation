@@ -46,8 +46,10 @@ Prima di pubblicarla su Pages:
    Il frontend viene pubblicato dal push su `main`. Evita reset del sondaggio
    durante il passaggio e fai ricaricare la pagina ai partecipanti.
 
-L'admin accede con email e password Firebase; la vecchia password incorporata
-nel sorgente non viene più usata. Non salvare password o token nel repository.
+L'admin accede con username `admin` (alias dell'account amministratore) oppure
+con email, e con la password verificata da Firebase. L'alias usa l'email configurata
+tramite `VITE_ADMIN_EMAIL`, con l'account proprietario come valore predefinito.
+La password non è incorporata nel codice del sito. Non salvare password o token nel repository.
 I partecipanti ottengono un'identità anonima Firebase automaticamente.
 Ogni voto scrive nella stessa transazione il contatore e una ricevuta immutabile
 `votes/UID/rounds/ROUND`. Le regole verificano identità, round corrente,

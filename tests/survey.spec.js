@@ -41,7 +41,7 @@ async function login(page) {
   await page.goto('#/admin')
   await expect(page.getByRole('button',{name:/^Sign (in|out)$/})).toBeVisible()
   if (await page.getByRole('button',{name:'Sign out',exact:true}).isVisible()) return
-  await page.getByPlaceholder('email').fill('qa-admin@example.test')
+  await page.getByPlaceholder('username').fill('admin')
   await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect(page.getByText('Round: 17',{exact:true})).toBeVisible()
@@ -86,7 +86,7 @@ test('unknown URL returns a usable home page', async ({page}) => {
 
 test('wrong credentials remain outside admin', async ({page}) => {
   await page.goto('#/admin')
-  await page.getByPlaceholder('email').fill('wrong@example.test')
+  await page.getByPlaceholder('username').fill('wrong@example.test')
   await page.getByPlaceholder('password',{exact:true}).fill('wrong')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect(page.getByRole('alert')).toContainText('Unable to sign in.')
@@ -384,7 +384,7 @@ test('first admin initializes missing round state and resets an empty survey', a
   await fetch(`${root}/emulator/v1/projects/${project}/databases/(default)/documents`,{method:'DELETE'})
   await seedAdmin()
   await page.goto('#/admin')
-  await page.getByPlaceholder('email').fill('qa-admin@example.test'); await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
+  await page.getByPlaceholder('username').fill('qa-admin@example.test'); await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect.poll(async()=>(await readDoc('meta/state'))?.round?.integerValue).toBe('1')
   await expect(page.getByText('No titles yet.')).toBeVisible()
@@ -416,7 +416,7 @@ test('valid Firebase credentials without admin role cannot access management', a
     body:JSON.stringify({email:'participant@example.test',password:'emulator-password-only',returnSecureToken:true})
   })
   await page.goto('#/admin')
-  await page.getByPlaceholder('email').fill('participant@example.test')
+  await page.getByPlaceholder('username').fill('participant@example.test')
   await page.getByPlaceholder('password',{exact:true}).fill('emulator-password-only')
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect(page.getByRole('alert')).toHaveText('This account is not an administrator.')
