@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { db, nowTs } from '../firebase'
+import { auth, db, nowTs } from '../firebase'
 import {
   collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc,
-  setDoc, getDocs, writeBatch, increment
+  setDoc, getDoc, getDocs, writeBatch, increment
 } from 'firebase/firestore'
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { Link } from 'react-router-dom'
 import { routes } from '../utils/routes'
 import s from '../styles/AdminPage.module.css'
 
-const DEFAULT_ADMIN = { user: 'admin', pass: 'T&I-admin' }
 
 export default function AdminPage() {
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [isAuthed, setIsAuthed] = useState(false)
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
@@ -26,10 +27,42 @@ export default function AdminPage() {
   const [titoli, setTitoli] = useState([]) // [{id,titolo,voto}]
   const [newTitolo, setNewTitolo] = useState('')
 
-  const login = (e) => {
+  useEffect(() => {
+    let generation = 0
+    const unsubscribe = onAuthStateChanged(auth, async account => {
+      const current = ++generation
+      setIsAuthed(false)
+      setCheckingAuth(true)
+      if (!account || account.isAnonymous) { setCheckingAuth(false); return }
+      try {
+        const role = await getDoc(doc(db, 'admins', account.uid))
+        if (current !== generation) return
+        setIsAuthed(role.exists())
+        if (!role.exists()) setError('This account is not an administrator.')
+      } catch {
+        if (current === generation) setError('Unable to verify administrator access. Please try again.')
+      } finally { if (current === generation) setCheckingAuth(false) }
+    })
+    return () => { generation++; unsubscribe() }
+  }, [])
+
+  const login = async (e) => {
     e.preventDefault()
-    if (user === DEFAULT_ADMIN.user && pass === DEFAULT_ADMIN.pass) setIsAuthed(true)
-    else alert('Wrong credentials')
+    if (working.current) return
+    working.current = true
+    setBusy(true)
+    setError('')
+    try {
+      const result = await signInWithEmailAndPassword(auth, user.trim(), pass)
+      const role = await getDoc(doc(db, 'admins', result.user.uid))
+      if (!role.exists()) {
+        await signOut(auth)
+        setError('This account is not an administrator.')
+      }
+      setPass('')
+    } catch {
+      setError('Unable to sign in. Check your email and password, then try again.')
+    } finally { working.current = false; setBusy(false) }
   }
 
   // Init state + subscribe
@@ -103,15 +136,18 @@ export default function AdminPage() {
     await updateDoc(stateRef, { blurTitles: !blurTitles, updatedAt: nowTs() })
   }
 
+  if (checkingAuth) return <div className={s.wrap}><p role="status">Checking administrator access…</p></div>
+
   if (!isAuthed) {
     return (
       <div className={s.wrap}>
         <div className={`${s.panel} ${s.loginFull}`}>
           <h2 className={s.pageTitle}>Admin Login</h2>
+          {error && <p role="alert">{error}</p>}
           <form onSubmit={login} className={s.grid}>
-            <input className={s.input} placeholder="username" value={user} onChange={e=>setUser(e.target.value)} />
-            <input className={s.input} placeholder="password" type="password" value={pass} onChange={e=>setPass(e.target.value)} />
-            <button className={`${s.btn} ${s.primary}`} type="submit">Sign in</button>
+            <input className={s.input} placeholder="email" type="email" autoComplete="username" required value={user} onChange={e=>setUser(e.target.value)} />
+            <input className={s.input} placeholder="password" type="password" autoComplete="current-password" required value={pass} onChange={e=>setPass(e.target.value)} />
+            <button className={`${s.btn} ${s.primary}`} type="submit" disabled={busy}>Sign in</button>
           </form>
         </div>
       </div>
@@ -125,6 +161,7 @@ export default function AdminPage() {
         <div className={s.row} style={{justifyContent:'flex-end'}}>
           <span className={s.badge}>Round: {round}</span>
           <span className={s.badge}>Blur: {blurTitles ? 'On' : 'Off'}</span>
+          <button className={s.btn} onClick={() => signOut(auth)}>Sign out</button>
           <Link className={s.btn} to={routes.home}>Home</Link>
         </div>
       </div>
