@@ -53,7 +53,11 @@ export default function AdminPage() {
     setBusy(true)
     setError('')
     try {
-      const result = await signInWithEmailAndPassword(auth, user.trim(), pass)
+      const identifier = user.trim()
+      const email = identifier === 'admin'
+        ? (import.meta.env.VITE_ADMIN_EMAIL || 'pietroangelicilavoro@gmail.com')
+        : identifier
+      const result = await signInWithEmailAndPassword(auth, email, pass)
       const role = await getDoc(doc(db, 'admins', result.user.uid))
       if (!role.exists()) {
         await signOut(auth)
@@ -61,7 +65,7 @@ export default function AdminPage() {
       }
       setPass('')
     } catch {
-      setError('Unable to sign in. Check your email and password, then try again.')
+      setError('Unable to sign in. Check your username and password, then try again.')
     } finally { working.current = false; setBusy(false) }
   }
 
@@ -145,7 +149,7 @@ export default function AdminPage() {
           <h2 className={s.pageTitle}>Admin Login</h2>
           {error && <p role="alert">{error}</p>}
           <form onSubmit={login} className={s.grid}>
-            <input className={s.input} placeholder="email" type="email" autoComplete="username" required value={user} onChange={e=>setUser(e.target.value)} />
+            <input className={s.input} placeholder="username" aria-label="Username or email" type="text" autoComplete="username" required value={user} onChange={e=>setUser(e.target.value)} />
             <input className={s.input} placeholder="password" type="password" autoComplete="current-password" required value={pass} onChange={e=>setPass(e.target.value)} />
             <button className={`${s.btn} ${s.primary}`} type="submit" disabled={busy}>Sign in</button>
           </form>
